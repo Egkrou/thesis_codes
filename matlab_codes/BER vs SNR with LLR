@@ -1,0 +1,55 @@
+close all;
+clc;
+clear;
+folder = "./PLOTS/";
+if ~isfolder(folder)
+    mkdir(folder);
+end
+snrdb=40:1:100;%snr in db
+snr=10.^(snrdb/10);%snr linear
+%ldpc info
+maxnumiter = 20;
+numCalls = 40;
+%QAM info
+M=4096;
+%
+nL=0;
+for ii=1:length(snr)
+    for counter = 1:numCalls
+        P_5_6 = [48 29 37 52 2 16 6 14 53 31 34 5 18 42 53 31 45 -1 46 52 1 0 -1 -1;
+                17 4 30 7 43 11 24 6 14 21 6 39 17 40 47 7 15 41 19 -1 -1 0 0 -1;
+                7 2 51 31 46 23 16 11 53 40 10 7 46 53 33 35 -1 25 35 38 0 -1 0 0;
+                19 48 41 1 10 7 36 47 5 29 52 52 31 10 26 6 3 2 -1 51 1 -1 -1 0 ];
+        blockSize = 56;
+        pcmatrix = ldpcQuasiCyclicMatrix(blockSize,P_5_6);
+        cfgLDPCEnc = ldpcEncoderConfig(pcmatrix);
+        infoBits = randi([0 1],cfgLDPCEnc.NumInformationBits,1,'int8');
+        encodedata = ldpcEncode(infoBits, cfgLDPCEnc);
+        encoderCfg = ldpcEncoderConfig(pcmatrix);
+        decoderCfg = ldpcDecoderConfig(encoderCfg);
+        %
+        modsigL=qammod(encodedata,M);
+        [rxsigL, noisevarL] = awgn(modsigL,snr(ii));
+        rxsigL1=double(rxsigL);%needs some form of quantization
+        rxDataSoftL = qamdemod(rxsigL1,M, ...
+                            OutputType='approxllr', ...
+                            UnitAveragePower=true, ...
+                            NoiseVariance=100);
+        Y=rxDataSoftL(1:1344);
+        rxbitsL = ldpcDecode(Y,decoderCfg,maxnumiter);
+        encodedata=encodedata(1:numel(rxbitsL));
+        diffL = biterr(encodedata,rxbitsL);
+        nL=nL+diffL;
+    end
+    bitL=numCalls*numel(rxbitsL);
+    berL(ii)=nL/bitL;
+end
+figure(5);
+semilogy(snr,berL.'.');
+title('BER vs SNR with LLR')
+xlabel('SNR')
+ylabel('BER')
+%xlim([12,20])
+subtitle("for 4k-QAM")
+legend('4k-QAM')
+grid on;
