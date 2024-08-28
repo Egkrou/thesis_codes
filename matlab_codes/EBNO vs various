@@ -1,0 +1,153 @@
+close all;
+clc;
+clear;
+folder = "./PLOTS/";
+if ~isfolder(folder)
+    mkdir(folder);
+end
+
+EbNo     = 40:1:100; % information rate Eb/No in dB
+codeRate = 5/6;     % code rate of convolutional encoder
+nBits    = 12;       % number of bits in a 4096-QAM symbol
+Pavg     = 10;      % average signal power of a 16-QAM modulated signal
+snr      = EbNo - 10*log10(1/codeRate) + 10*log10(nBits); % SNR in dB
+noiseVarVector = Pavg ./ (10.^(snr./10)); % noise variance
+M        =4096;
+numCalls = 40;
+maxnumiter = 20;
+numErrs=0;
+nE=0;
+nL=0;
+ttlErr=0;
+
+for ii = 1:length(snr)
+    noiseVar = 10.^(-snr/10);
+    for counter = 1:numCalls
+        %ldpc calculation
+        %ldpc encoding%%
+        P_5_6 = [48 29 37 52 2 16 6 14 53 31 34 5 18 42 53 31 45 -1 46 52 1 0 -1 -1;
+                17 4 30 7 43 11 24 6 14 21 6 39 17 40 47 7 15 41 19 -1 -1 0 0 -1;
+                7 2 51 31 46 23 16 11 53 40 10 7 46 53 33 35 -1 25 35 38 0 -1 0 0;
+                19 48 41 1 10 7 36 47 5 29 52 52 31 10 26 6 3 2 -1 51 1 -1 -1 0 ];
+        blockSize = 56;
+        pcmatrix = ldpcQuasiCyclicMatrix(blockSize,P_5_6);
+
+        cfgLDPCEnc = ldpcEncoderConfig(pcmatrix);
+
+        infoBits = randi([0 1],cfgLDPCEnc.NumInformationBits,1,'int8');
+        encodedata = ldpcEncode(infoBits, cfgLDPCEnc);
+        encoderCfg = ldpcEncoderConfig(pcmatrix);
+        decoderCfg1 = ldpcDecoderConfig(encoderCfg); % The default algorithm is "bp"
+        decoderCfg2 = ldpcDecoderConfig(encoderCfg);
+        %
+        data=randi([0 1],1000,1);
+        q=10;
+        %no ldpc
+        modsignal=qammod(data,M);
+        [rxsig, noisevar] = awgn(modsignal,snr(ii));
+        demodsig=qamdemod(rxsig,M);
+        Noise=q*randn(1000,1);%making the gaussian white noise with sigma q
+        noisedata = demodsig + Noise;%adding noise
+        noiseabs=abs(noisedata);
+        noiseinint=int64(noiseabs);
+        noiseinbit=int2bit(noiseinint,1);
+        diff=biterr(data,noiseinbit);
+        numErrs = numErrs + diff;
+        %with LDPC
+        modsig1=qammod(encodedata,M);
+        [rxsig1, noisevar1] = awgn(modsig1,snr(ii));
+        demodsig1=qamdemod(rxsig1,M);
+        rxbits1 = ldpcDecode(demodsig1,decoderCfg1,maxnumiter);
+        encodedata=encodedata(1:numel(rxbits1));
+        diff1 = biterr(encodedata,rxbits1);
+        nE=nE + diff1;
+
+        %
+        P_5_62 = [48 29 37 52 2 16 6 14 53 31 34 5 18 42 53 31 45 -1 46 52 1 0 -1 -1;
+                17 4 30 7 43 11 24 6 14 21 6 39 17 40 47 7 15 41 19 -1 -1 0 0 -1;
+                7 2 51 31 46 23 16 11 53 40 10 7 46 53 33 35 -1 25 35 38 0 -1 0 0;
+                19 48 41 1 10 7 36 47 5 29 52 52 31 10 26 6 3 2 -1 51 1 -1 -1 0 ];
+        blockSize2 = 56;
+        pcmatrix2 = ldpcQuasiCyclicMatrix(blockSize2,P_5_62);
+
+        cfgLDPCEnc2 = ldpcEncoderConfig(pcmatrix2);
+
+        infoBits2 = randi([0 1],cfgLDPCEnc2.NumInformationBits,1,'int8');
+        encodedata2 = ldpcEncode(infoBits2, cfgLDPCEnc2);
+        encoderCfg12 = ldpcEncoderConfig(pcmatrix2);
+        decoderCfg12 = ldpcDecoderConfig(encoderCfg12);
+        %using norm min-sum
+       modsig2=qammod(encodedata2,M);
+       [rxsig2, noisevar2] = awgn(modsig2,snr(ii));
+       demodsig2=qamdemod(rxsig2,M);
+       rxBits2 = ldpcDecode(demodsig2,decoderCfg12,maxnumiter);
+       encodedata2=encodedata2(1:numel(rxBits2));
+       numErr2 = biterr(encodedata2,rxBits2);
+       ttlErr = ttlErr +  numErr2;
+       %using ldpc and llrbaseqamdemod
+       modsigL=qammod(encodedata,M);
+       [rxsigL, noisevarL] = awgn(modsigL,snr(ii));
+       rxDataSoftL = qamdemod(rxsigL,M, ...
+       OutputType='approxllr', ...
+       UnitAveragePower=true, ...
+       NoiseVariance=noisevarL);
+       Y=rxDataSoftL(1:1344);
+       rxbitsL = ldpcDecode(Y,decoderCfg1,maxnumiter);
+       encodedata=encodedata(1:numel(rxbitsL));
+       diffL = biterr(encodedata,rxbitsL);
+       nL=nL+diffL;
+    end
+    berEst(ii) = numErrs/1000;
+    %
+    bit=numCalls*numel(rxbits1);
+    ber1(ii)=nE/bit;
+    %%%USING NORM MIN-SUM
+    ttlBits = numCalls*numel(rxBits2);
+    errRate(ii,:) = ttlErr/ttlBits;
+    %
+    bitL=numCalls*numel(rxbitsL);
+    berL(ii)=nL/bitL;
+end 
+fig1=figure;
+semilogy(snr,berEst.'.');
+title('BER vs Eb/N0 no LDPC')
+xlabel('SNR')
+ylabel('BER')
+%xlim([12,20])
+subtitle("for 4k-QAM")
+legend('4k-QAM')
+grid on;
+exportgraphics(fig1, fullfile(folder, "BER vs Eb/N0"+".png"), 'Resolution', 300);
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%FIG 2%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+fig2=figure;
+semilogy(snr,ber1.'.');
+title('BER vs Eb/N0 with LDPC')
+xlabel('SNR')
+ylabel('BER')
+%xlim([12,20])
+subtitle("for 4k-QAM")
+legend('4k-QAM')
+grid on;
+exportgraphics(fig2, fullfile(folder, "BER vs Eb/N0 with LDPC"+".png"), 'Resolution', 300);
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%FIG 3%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+fig3=figure;
+semilogy(snr,errRate.'.');
+title('BER vs Eb/N0 with min sum')
+xlabel('SNR')
+ylabel('BER')
+%xlim([12,20])
+subtitle("for 4k-QAM")
+legend('4k-QAM')
+grid on;
+exportgraphics(fig3, fullfile(folder, "BER vs Eb/N0 with LDPC"+".png"), 'Resolution', 300);
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%FIG 4%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+fig4=figure;
+semilogy(snr,berL.'.');
+title('BER vs Eb/N0 with LLRDEMOD QAM')
+xlabel('SNR')
+ylabel('BER')
+%xlim([12,20])
+subtitle("for 4k-QAM")
+legend('4k-QAM')
+grid on;
+exportgraphics(fig4, fullfile(folder, "BER vs Eb/N0 with LLRDEMODQAM"+".png"), 'Resolution', 300);
