@@ -1,0 +1,118 @@
+clc;
+close all;
+clear all;
+folder = "./PLOTS/";
+if ~isfolder(folder)
+    mkdir(folder);
+end
+
+fc=1000;%carrier wave frequency
+input_bits=[1 1 1 1 0 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 1 1 1 0 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 1 1 1 0 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 1 1 1 0 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 1 1 1 0 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 1 1 1 0 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 1 1 1 0 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 1 1 1 0 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 1 1 1 0 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 1 1 1 0 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0];
+n=length(input_bits);
+%Serial - to - parallel%
+for i=1:1:n/2
+    para1(i)=input_bits(i);
+end
+%Serial - to -parallel%
+for j=1:1:n/2
+    para2(j)=input_bits(j+n/2);
+end
+
+%Direct digital frequency synthesis$
+time=linspace(0,10,100);
+x1=cos(2*pi*fc*time);
+x2=sin(2*pi*fc*time);
+%plots%
+fig=figure,plot(time,x1);
+title('carrier cosine');
+xlabel('t in time');
+ylabel('amplitude');
+grid on
+exportgraphics(fig, fullfile(folder, "sampled cosine"+".png"), 'Resolution', 300);
+fig2=figure,plot(time,x2);
+title('carrier sin');
+xlabel('t in time');
+ylabel('amplitude');
+grid on
+exportgraphics(fig2, fullfile(folder, "sampled sine"+".png"), 'Resolution', 300);
+%quantizing
+%quantization_time=[0:100:2*pi];
+quantization_time=[0:1:99];
+Amax=0.8;
+Amin=-Amax;
+L=2^n;
+d=Amax-Amin/L;
+p=Amin:d:Amax;
+code=Amin-(d/2):d:Amax+(d/2);
+[ind,q]=quantiz(x1,p,code);
+[ind1,q1]=quantiz(x2,p,code);
+fig3=figure,plot(quantization_time,q.'.');
+title('quantized cos');
+xlabel('t in samples');
+ylabel('binary value');
+grid on;
+exportgraphics(fig3, fullfile(folder, "quantized cos"+".png"), 'Resolution', 300);
+fig4=figure,plot(quantization_time,q1.'.');
+title('quantized sin');
+xlabel('t in samples');
+ylabel('binary value');
+grid on;
+exportgraphics(fig4, fullfile(folder, "quantized cos"+".png"), 'Resolution', 300);
+
+%multiplying%
+mul1=x1.*para1;
+mul2=x2.*para2;
+%adding%
+res=mul2-mul1;
+%plotting res
+time2=0.1:0.1:10;
+plot(time2,res);
+%PCM
+A1max=0.8;
+A1min=-A1max;
+L1=2^n;
+d1=A1max-A1min/L1;
+p1=A1min:d1:A1max;
+code1=A1min-(d1/2):d1:A1max+(d1/2);
+[ind2,q2]=quantiz(res,p1,code1);
+fig5=figure,plot(quantization_time,q2,'.');
+title('quantizee result');
+xlabel('samples');
+ylabel('quantized amplitude');
+grid on;
+exportgraphics(fig5, fullfile(folder, "quantized results"+".png"), 'Resolution', 300);
+fig6=figure,stairs(q2);
+title('better quantized results');
+xlabel('samples');
+ylabel('Q(x)');
+grid on;
+exportgraphics(fig6, fullfile(folder, "better quantized results"+".png"), 'Resolution', 300);
+%encoding
+%normally would need μ-law
+%mapping using gray code
+%-1.2 --> 00
+%0.4 -->01
+%-0.4 -->11
+%-1.2 -->10
+%array of chars
+binary=dec2bin(ind2);
+%array of nums
+num=str2num(binary);
+%array of bin as chars with 4 digits
+binary_char=dec2bin(num,4);
+%array of bin
+bits=str2num(reshape(binary_char',[],1))';
+%converting to gray code
+gray=bi2gray(bits);
+%ploting
+X=1:1:400;
+fig7=figure,stairs(X,gray,'LineWidth',1);
+title('data after ADC');
+xlabel('DATA');
+ylabel('Amplitude');
+grid on;
+exportgraphics(fig7,fullfile(folder,"Data sent over channel"+".png"),'Resolution',300);
+%%channel
+sig=rayleigh_channel(gray);
+
+%
