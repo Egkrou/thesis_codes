@@ -1,0 +1,32 @@
+clear all;
+close all;
+clc;
+%SNR
+snrdb=42:1:70;%db 10loga=adb
+snr=10.^(snrdb/10);%linear 10^a/10
+k=12;
+M=2^k;
+
+%save plots to
+folder = "./PLOTS/";
+if ~isfolder(folder)
+    mkdir(folder);
+end
+
+
+%4k-QAM ber
+%formula BER-Eb/No for 4K-QAM at receiver
+snra=1.2e-05*snr;
+ber=0.16-0.16*sqrt(0.008*snra/2+0.008*snra);
+%plotting
+fig=figure;
+semilogy(snrdb,ber,'Color','#00b300')
+xlabel("Eb/No[db]", "Interpreter", "latex", 'FontSize', 15)
+ylabel("BER", 'FontSize', 15)
+xlim([42,70])
+title("Theorical BER in a Rayleigh fading channel")
+subtitle("for 4k-QAM")
+legend('4k-QAM')
+grid on
+
+exportgraphics(fig, fullfile(folder, "Theorical_BER"+".png"), 'Resolution', 300)
